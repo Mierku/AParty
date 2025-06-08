@@ -19,6 +19,18 @@ export const SUPPORTED_SITES: SupportedSite[] = [
     createPattern: '*://*.youtube.com/*',
     injectPatterns: ['*://*.youtube.com/watch*'],
   },
+  {
+    name: 'ntdm',
+    domain: 'ntdm8.com',
+    createPattern: '*://*.ntdm8.com/*',
+    injectPatterns: ['*://*.ntdm8.com/play/*'],
+  },
+  {
+    name: 'iyinghua',
+    domain: 'iyinghua.com',
+    createPattern: '*://*.iyinghua.com/*',
+    injectPatterns: ['*://*.iyinghua.com/v/*'],
+  },
 ]
 
 // 消息类型
@@ -31,6 +43,7 @@ export enum MessageType {
   PLAY = 'PLAY',
   PAUSE = 'PAUSE',
   SEEK = 'SEEK',
+  SYNC = 'SYNC',
   CONTROL_MODE_CHANGE = 'CONTROL_MODE_CHANGE',
   ROOM_INFO = 'ROOM_INFO',
   REDIRECT = 'REDIRECT',

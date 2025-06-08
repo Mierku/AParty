@@ -6,54 +6,148 @@ import { sendMessagePromise } from '@/utils/message'
 
 // 内容脚本的主入口点
 export default defineContentScript({
-  matches: ['*://*.bilibili.com/*', '*://*.youtube.com/*'],
-
+  // matches: ['*://*.bilibili.com/*', '*://*.youtube.com/*'],
+  matches: ['<all_urls>'],
+  // allFrames: true,
   async main() {
     console.log('视频同步插件已加载')
+
+    // 创建悬浮按钮
+    const createFloatingButton = () => {
+      // 检查是否已存在按钮，避免重复创建
+      if (document.getElementById('video-sync-button')) {
+        return
+      }
+
+      const button = document.createElement('button')
+      button.id = 'video-sync-button'
+      button.textContent = '发送VIDEO_DETECT'
+      button.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        padding: 10px 15px;
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        transition: all 0.3s ease;
+      `
+
+      // 悬停效果
+      button.addEventListener('mouseenter', () => {
+        button.style.background = '#45a049'
+        button.style.transform = 'scale(1.05)'
+      })
+
+      button.addEventListener('mouseleave', () => {
+        button.style.background = '#4CAF50'
+        button.style.transform = 'scale(1)'
+      })
+
+      // 点击事件
+      button.addEventListener('click', async () => {
+        try {
+          button.textContent = '发送中...'
+          button.disabled = true
+
+          // const backgroundPort = backgroundPortListener()
+          const userId = await getUserId()
+
+          // 发送VIDEO_DETECT消息
+          const response = await sendMessagePromise({
+            action: 'VIDEO_DETECT',
+            data: {
+              // backgroundPort,
+              roomId: currentRoomId || 'test-room-' + Date.now(),
+              isHost: true,
+            },
+          })
+
+          console.log('VIDEO_DETECT消息发送成功:', response)
+
+          // 显示成功状态
+          button.textContent = '发送成功!'
+          button.style.background = '#2196F3'
+
+          // 2秒后恢复原状
+          setTimeout(() => {
+            button.textContent = '发送VIDEO_DETECT'
+            button.style.background = '#4CAF50'
+            button.disabled = false
+          }, 2000)
+        } catch (error) {
+          console.error('发送VIDEO_DETECT消息失败:', error)
+
+          // 显示错误状态
+          button.textContent = '发送失败'
+          button.style.background = '#f44336'
+
+          // 2秒后恢复原状
+          setTimeout(() => {
+            button.textContent = '发送VIDEO_DETECT'
+            button.style.background = '#4CAF50'
+            button.disabled = false
+          }, 2000)
+        }
+      })
+
+      // 添加到页面
+      document.body.appendChild(button)
+    }
+
+    // 页面加载完成后创建按钮
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', createFloatingButton)
+    } else {
+      createFloatingButton()
+    }
+
     // observeUrlChanges(handleUrlChange)
     // 存储视频同步管理器实例，以便后续清理
     let videoSyncManager: VideoSyncManager | null = null
     let currentRoomId: string | null = null
     let isHost: boolean = false
-    let lastUrl: string = window.location.href
-    let currentDomain: string | null = getCurrentSite()?.domain || null
-    let backgroundPort: globalThis.Browser.runtime.Port | null = null
+    // let currentDomain: string | null = getCurrentSite()?.domain || null
+    // let backgroundPort: globalThis.Browser.runtime.Port | null = null
     // 创建视频管理器的辅助函数
-    const createVideoManager = async (
-      backgroundPort: globalThis.Browser.runtime.Port,
-      roomId?: string,
-      host?: boolean,
-      videoStatus?: { currentTime: number; isPlaying: boolean; lastUpdate: number },
-    ): Promise<VideoSyncManager | null> => {
-      // 如果页面不支持视频同步，直接返回
-      if (!isSupportedVideoPage()) {
-        console.log('当前页面不支持视频同步')
-        return null
-      }
+    // const createVideoManager = async (
+    //   backgroundPort: globalThis.Browser.runtime.Port,
+    //   roomId?: string,
+    //   host?: boolean,
+    //   videoStatus?: { currentTime: number; isPlaying: boolean; lastUpdate: number },
+    // ): Promise<VideoSyncManager | null> => {
+    //   // 如果页面不支持视频同步，直接返回
+    //   if (!isSupportedVideoPage()) {
+    //     console.log('当前页面不支持视频同步')
+    //     return null
+    //   }
 
-      if (videoSyncManager) {
-        console.log('清理旧的视频同步管理器实例和websocket注册事件')
-        videoSyncManager.cleanup()
-      }
+    //   if (videoSyncManager) {
+    //     console.log('清理旧的视频同步管理器实例和websocket注册事件')
+    //     videoSyncManager.cleanup()
+    //   }
 
-      // 创建新实例
-      console.log('创建新的视频同步管理器实例', roomId ? `，房间ID: ${roomId}` : '')
+    //   // 创建新实例
+    //   console.log('创建新的视频同步管理器实例', roomId ? `，房间ID: ${roomId}` : '')
 
-      // 更新当前状态
-      if (roomId) {
-        currentRoomId = roomId
-        isHost = host || false
-        lastUrl = window.location.href
-        currentDomain = getCurrentSite()?.domain || null
-      }
-      if (videoStatus) {
-        videoSyncManager = new VideoSyncManager(backgroundPort, roomId, host, videoStatus)
-      } else {
-        videoSyncManager = new VideoSyncManager(backgroundPort, roomId, host)
-      }
+    //   // 更新当前状态
+    //   if (roomId) {
+    //     currentRoomId = roomId
+    //     isHost = host || false
+    //   }
+    //   if (videoStatus) {
+    //     videoSyncManager = new VideoSyncManager(backgroundPort, roomId, host, videoStatus)
+    //   } else {
+    //     videoSyncManager = new VideoSyncManager(backgroundPort, roomId, host)
+    //   }
 
-      return videoSyncManager
-    }
+    //   return videoSyncManager
+    // }
     async function isInRoom() {
       const response = await sendMessagePromise({
         type: 'GET_ROOM_INFO',
@@ -61,16 +155,14 @@ export default defineContentScript({
 
       if (!response.success) return
       console.log('收到房间信息 isInRoom:', response)
-      const backgroundPort = backgroundPortListener()
+      // const backgroundPort = backgroundPortListener()
       const { roomInfo } = response.data
       // 是否是视频页面( 导入到目标页面  刷新页面 自主进入其他页面)
 
-      console.log(1)
       if (isSupportedVideoPage()) {
         // 有视频
         if (roomInfo.url === window.location.href) {
           // 有视频且是同一个页面
-          console.log(2)
 
           const videoData = await sendMessagePromise({
             type: 'VIDEO_STATUS',
@@ -82,14 +174,31 @@ export default defineContentScript({
           if (!videoData.success) return
           console.log('收到视频状态:', videoData)
           // 创建视频管理器
-          createVideoManager(backgroundPort, roomInfo.roomId, roomInfo.isHost, videoData.videoStatus)
+          await sendMessagePromise({
+            action: 'VIDEO_DETECT',
+            data: {
+              // backgroundPort,
+              roomId: roomInfo.roomId,
+              isHost: roomInfo.isHost,
+              videoData,
+            },
+          })
+          // createVideoManager(backgroundPort, roomInfo.roomId, roomInfo.isHost, videoData.videoStatus)
         } else {
           // 有视频是不同的页面
           console.log(3)
           // 如果房主是当前用户 则通知跳转
           if (roomInfo.host === roomInfo.senderId) {
             // 则通知更新
-            createVideoManager(backgroundPort, roomInfo.roomId, roomInfo.isHost)
+            await sendMessagePromise({
+              action: 'VIDEO_DETECT',
+              data: {
+                // backgroundPort,
+                roomId: roomInfo.roomId,
+                isHost: roomInfo.isHost,
+              },
+            })
+            // createVideoManager(backgroundPort, roomInfo.roomId, roomInfo.isHost)
             // 刷新进的新房间
             await sendMessagePromise({
               type: 'URL_SEND_UPDATED',
@@ -102,22 +211,22 @@ export default defineContentScript({
         }
       }
     }
-    function backgroundPortListener() {
-      return browser.runtime.connect({ name: 'keep-alive' })
-    }
-    function handleUrlChange(newUrl: string) {
-      // 还要加一个权限控制 和判断是否是视频页面
-      console.log('收到url变化消息:', newUrl)
-      if (isSupportedVideoPage()) {
-        sendMessagePromise({
-          type: 'URL_SEND_UPDATED',
-          data: {
-            url: newUrl,
-            video: videoSyncManager!.getCurrentVideo(),
-          },
-        })
-      }
-    }
+    // function backgroundPortListener() {
+    //   return browser.runtime.connect({ name: 'keep-alive' })
+    // }
+    // function handleUrlChange(newUrl: string) {
+    //   // 还要加一个权限控制 和判断是否是视频页面
+    //   console.log('收到url变化消息:', newUrl)
+    //   if (isSupportedVideoPage()) {
+    //     sendMessagePromise({
+    //       action: 'URL_SEND_UPDATED',
+    //       data: {
+    //         url: newUrl,
+    //         video: videoSyncManager!.getCurrentVideo(),
+    //       },
+    //     })
+    //   }
+    // }
 
     await isInRoom()
     // 提供API给popup 页background面调用
@@ -175,9 +284,7 @@ export default defineContentScript({
               })
               if (!response.success) return
               // 建立长连接
-              backgroundPort = browser.runtime.connect({
-                name: 'keep-alive',
-              })
+              // backgroundPort = backgroundPortListener()
               // 获取视频状态 用于初始化
               const videoData = await sendMessagePromise({
                 type: 'VIDEO_STATUS',
@@ -189,7 +296,16 @@ export default defineContentScript({
               console.log('收到视频状态:', videoData)
               if (!videoData.success) return
               // 创建视频管理器
-              await createVideoManager(backgroundPort, roomId, false, videoData.videoStatus)
+              await sendMessagePromise({
+                action: 'VIDEO_DETECT',
+                data: {
+                  // backgroundPort,
+                  roomId,
+                  isHost: false,
+                  videoData,
+                },
+              })
+              // await createVideoManager(backgroundPort, roomId, false, videoData.videoStatus)
               // 返回给popup
               sendResponse({
                 success: true,
@@ -222,11 +338,19 @@ export default defineContentScript({
 
                 // 获取当前网站信息
                 const site = getCurrentSite()
-                backgroundPort = backgroundPortListener()
+                // backgroundPort = backgroundPortListener()
 
                 // 初始化视频管理器
-                await createVideoManager(backgroundPort, roomId, true)
-                const video = videoSyncManager!.getCurrentVideo()
+                const { video, success } = await sendMessagePromise({
+                  action: 'VIDEO_DETECT',
+                  data: {
+                    // backgroundPort,
+                    roomId,
+                    isHost: true,
+                  },
+                })
+                // await createVideoManager(backgroundPort, roomId, true)
+                // const video = videoSyncManager!.getCurrentVideo()
                 console.log('当前视频状态:', video)
                 // 创建房间信息
                 newRoomInfo = {
@@ -252,6 +376,7 @@ export default defineContentScript({
                   createRoomMessage,
                 },
               })
+              console.log('创建房间响应:', response)
               if (!response.success) return
               // 返回成功结果给popup
               sendResponse({
@@ -279,10 +404,13 @@ export default defineContentScript({
               currentRoomId = null
               isHost = false
               // 清理资源
-              if (videoSyncManager) {
-                videoSyncManager.cleanup()
-                videoSyncManager = null
-              }
+              await sendMessagePromise({
+                action: 'CLEAN_VIDEO_MANAGER',
+              })
+              // if (videoSyncManager) {
+              //   videoSyncManager.cleanup()
+              //   videoSyncManager = null
+              // }
               sendResponse({ success: true })
             } catch (error) {
               console.error('离开房间失败:', error)
@@ -291,20 +419,20 @@ export default defineContentScript({
             break
 
           // 初始化同步 (从background.ts发来的)
-          case 'INIT_SYNC':
-            console.log('初始化视频同步')
-            // 只有收到初始化同步消息才创建视频管理器
-            if (isSupportedVideoPage()) {
-              // 使用无参构造，让VideoSyncManager自己从后台获取信息
-              await createVideoManager(backgroundPort)
-              sendResponse({ success: true })
-            } else {
-              sendResponse({
-                success: false,
-                message: '当前页面不支持视频同步',
-              })
-            }
-            break
+          // case 'INIT_SYNC':
+          //   console.log('初始化视频同步')
+          //   // 只有收到初始化同步消息才创建视频管理器
+          //   if (isSupportedVideoPage()) {
+          //     // 使用无参构造，让VideoSyncManager自己从后台获取信息
+          //     await createVideoManager(backgroundPort)
+          //     sendResponse({ success: true })
+          //   } else {
+          //     sendResponse({
+          //       success: false,
+          //       message: '当前页面不支持视频同步',
+          //     })
+          //   }
+          //   break
           // 获取房间信息
           // case 'get_room_info':
           //   try {
@@ -418,7 +546,7 @@ export default defineContentScript({
           // 处理未知消息类型
           default:
             console.log('未知消息类型:', action)
-            sendResponse({ success: false, message: '未知消息类型' })
+            // sendResponse({ success: false, message: '未知消息类型' })
             break
         }
 

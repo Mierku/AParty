@@ -23,6 +23,6 @@
     "@wxt-dev/module-vue": "^1.0.1",
     "typescript": "5.6.3",
     "vue-tsc": "^2.1.10",
-    "wxt": "^0.20.0"
+    "wxt": "^0.20.7"
   }
 }

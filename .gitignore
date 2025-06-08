@@ -15,6 +15,9 @@ stats-*.json
 .output
 web-ext.config.ts
 node_modules/
+frontend.md
+everyday.md
+rule.md
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

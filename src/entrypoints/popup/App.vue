@@ -320,7 +320,7 @@ const getCurrentTab = async () => {
 }
 
 // 发送消息到内容脚本
-const sendToContentScript = async (message: any) => {
+const sendToContentScript = async (message: any, frameId?: number) => {
   try {
     const tab = await getCurrentTab()
 
@@ -329,7 +329,7 @@ const sendToContentScript = async (message: any) => {
     }
 
     // 改用Promise方式发送消息
-    return await browser.tabs.sendMessage(tab.id!, message)
+    return await browser.tabs.sendMessage(tab.id!, message, { frameId })
   } catch (error) {
     console.error('向内容脚本发送消息失败:', error)
     throw error
@@ -347,11 +347,14 @@ const createRoom = async () => {
     const newRoomId = generateRoomId()
     const tab = await getCurrentTab()
     // 直接让内容脚本处理创建房间的逻辑
-    const response = await sendToContentScript({
-      action: 'create_room',
-      roomId: newRoomId,
-      controlMode: controlMode.value,
-    })
+    const response = await sendToContentScript(
+      {
+        action: 'create_room',
+        roomId: newRoomId,
+        controlMode: controlMode.value,
+      },
+      0,
+    )
 
     // 处理响应
     if (response && response.success) {
@@ -371,7 +374,7 @@ const createRoom = async () => {
         isHost: isHost.value,
       })
     } else {
-      console.error('创建房间失败:', response?.error || '未知错误')
+      console.error('创建房间失败:', response?.error || response)
     }
   } catch (error) {
     console.error('创建房间失败:', error)

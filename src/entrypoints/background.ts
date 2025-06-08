@@ -1,6 +1,7 @@
 import { saveCurrentRoom, getCurrentRoom, getRoomInfo, getUserId, clearRoomInfo } from '../utils/storage'
 import { RoomInfo } from '../utils/constants'
 import websocketService from '@/utils/websocket'
+import { sendToContentScript } from '@/utils/message'
 
 // 定义接口
 interface TabsRooms {
@@ -35,9 +36,9 @@ export default defineBackground(async () => {
     ;(async () => {
       console.log('后台收到消息:', message.type, sender)
       const tabId = sender?.tab?.id
-
+      const type = message.type || message.action
       // 使用switch/case结构处理消息
-      switch (message.type) {
+      switch (type) {
         // 创建房间
         case 'CREATE_ROOM':
           if (!tabId) return true
@@ -217,6 +218,50 @@ export default defineBackground(async () => {
             }
           }
           break
+        // 作为中转站 转发给iframe
+        case 'VIDEO_DETECT':
+          {
+            const { backgroundPort, roomId, isHost, videoData } = message.data
+            const tabId = sender!.tab!.id!
+            const frames = await browser.webNavigation.getAllFrames({ tabId })
+            console.log('转发视频注册机:', message, frames)
+            // 获取所有框架
+
+            // 向每个框架单独发送消息
+            const responses = await Promise.all(
+              frames!.map((frame) =>
+                browser.tabs.sendMessage(
+                  tabId,
+                  {
+                    action: 'VIDEO_DETECT',
+                    data: {
+                      backgroundPort,
+                      roomId,
+                      isHost,
+                      videoData,
+                    },
+                  },
+                  { frameId: frame.frameId },
+                ),
+              ),
+            )
+            // 只返回成功的视频实例
+            responses.forEach((response) => {
+              if (response.success) {
+                sendResponse({ success: true, video: response.video })
+              }
+            })
+          }
+          break
+        //作为中转站 通知iframe清理视频注册机
+        case 'CLEAN_VIDEO_MANAGER':
+          {
+            const { success } = await sendToContentScript({
+              action: 'CLEAN_VIDEO_MANAGER',
+            })
+            sendResponse({ success })
+          }
+          break
         case 'UPDATE_ROOM_INFO_BG':
           {
             if (!tabId) return true
@@ -325,7 +370,7 @@ export default defineBackground(async () => {
         case 'VIDEO_RECEIVE_EVENT_OFF':
           if (!tabId) {
             sendResponse({ success: false, message: '未找到标签页ID' })
-            return
+            return true
           }
           // 使用保存的监听器引用来移除
           if (messageListeners[tabId]) {
@@ -352,8 +397,6 @@ export default defineBackground(async () => {
           break
         // 未知消息类型
         default:
-          console.log('未知消息类型:', message.type)
-          sendResponse({ success: false, message: '未知消息类型' })
           break
       }
 

@@ -12,29 +12,37 @@ export interface VideoController {
   initVideoStatus(video: { currentTime: number; isPlaying: boolean; lastUpdate: number }): void
 }
 
-// 不同网站的视频控制器实现
-class BilibiliController implements VideoController {
+class UniversalVideoController implements VideoController {
   private video: HTMLVideoElement | null = null
 
   constructor() {
     this.findVideoElement()
+
+    if (!this.video) {
+      throw new Error('未找到视频元素')
+    }
   }
 
   private findVideoElement(): void {
     this.video = document.querySelector('video')
-    console.log('找到视频元素:', this.video)
+    if (window.self !== window.top) {
+      console.log('iframe', this.video)
+    }
+    if (window.self === window.top) {
+      console.log('video', this.video)
+    }
   }
   initVideoStatus(video: { currentTime: number; isPlaying: boolean; lastUpdate: number }): void {
-    console.log('正在初始化视频状态:', video, video.currentTime)
-
+    console.log('initVideoStatus', video)
+    this.video!.currentTime = video.currentTime
     if (video.isPlaying) {
-      console.log('初始化到播放')
       this.video!.currentTime = video.currentTime + (Date.now() - video.lastUpdate) / 1000
       this.video!.play()
+      console.log('play')
     } else {
-      console.log('初始化到停止')
       this.video!.currentTime = video.currentTime
       this.video!.pause()
+      console.log('pause')
     }
   }
   play(): void {
@@ -68,68 +76,26 @@ class BilibiliController implements VideoController {
   }
 }
 
-class YouTubeController implements VideoController {
-  private video: HTMLVideoElement | null = null
-
-  constructor() {
-    this.findVideoElement()
-  }
-
-  private findVideoElement(): void {
-    this.video = document.querySelector('video')
-  }
-  initVideoStatus(video: { currentTime: number; isPlaying: boolean; lastUpdate: number }): void {
-    this.video!.currentTime = video.currentTime
-    if (video.isPlaying) {
-      this.video!.currentTime = video.currentTime + (Date.now() - video.lastUpdate) / 1000
-      this.video!.play()
-    } else {
-      this.video!.currentTime = video.currentTime
-      this.video!.pause()
-    }
-  }
-  play(): void {
-    if (this.video) {
-      this.video.play()
-    }
-  }
-
-  pause(): void {
-    if (this.video) {
-      this.video.pause()
-    }
-  }
-
-  seekTo(time: number): void {
-    if (this.video) {
-      this.video.currentTime = time
-    }
-  }
-
-  getCurrentTime(): number {
-    return this.video ? this.video.currentTime : 0
-  }
-
-  isPlaying(): boolean {
-    return this.video ? !this.video.paused : false
-  }
-
-  getDuration(): number {
-    return this.video ? this.video.duration : 0
-  }
+// 检查页面是否存在视频元素
+export const hasVideoElement = (): boolean => {
+  return document.querySelector('video') !== null
 }
 
 // 工厂函数，根据当前网站创建对应的控制器
 export const createVideoController = (): VideoController | null => {
   const url = window.location.href
 
-  if (url.includes('bilibili.com')) {
-    return new BilibiliController()
-  } else if (url.includes('youtube.com')) {
-    return new YouTubeController()
+  // if (url.includes('bilibili.com')) {
+  //   return new BilibiliController()
+  // } else if (url.includes('youtube.com')) {
+  //   return new YouTubeController()
+  // }
+  try {
+    return new UniversalVideoController()
+  } catch (error) {
+    console.error('创建视频控制器失败:', error)
+    return null
   }
-
-  return null
 }
 
 // 视频同步管理器
@@ -140,10 +106,14 @@ export class VideoSyncManager {
   private roomInfo: any = null
   private messageHandler: ((message: any) => void) | null = null
   private playHandler: ((event: Event) => Promise<void>) | null = null
+  private playingHandler: ((event: Event) => Promise<void>) | null = null
+  private waitingHandler: ((event: Event) => Promise<void>) | null = null
   private pauseHandler: ((event: Event) => Promise<void>) | null = null
   private seekedHandler: ((event: Event) => Promise<void>) | null = null
   private backgroundPort: globalThis.Browser.runtime.Port | null = null
   private eventLock: number = 0
+  private isBuffering: boolean = false
+  private lastBufferStart: number = 0
 
   // 添加延迟补偿相关属性
   private networkLatency: number = 0
@@ -161,7 +131,6 @@ export class VideoSyncManager {
     // 创建视频控制器
     this.controller = createVideoController()
     this.backgroundPort = backgroundPort
-    console.log('设置backgroundPort监听器')
 
     this.backgroundPort.onMessage.addListener((message) => {
       console.log('收到来自background的消息:', message)
@@ -245,29 +214,6 @@ export class VideoSyncManager {
         }
       })
     })
-    //   browser.runtime.sendMessage(
-    //     {
-    //       type: 'GET_ROOM_INFO',
-    //       data: { roomId: this.roomId },
-    //     },
-    //       if (response && response.success && response.roomInfo) {
-    //         this.roomInfo = response.roomInfo
-
-    //         // 更新房主状态（如果未明确指定）
-    //         if (this.isHost === undefined) {
-    //           getUserId().then((userId) => {
-    //             this.isHost = this.roomInfo.host === userId
-    //           })
-    //         }
-
-    //         console.log('成功获取房间信息:', this.roomId)
-    //       } else {
-    //         console.warn('获取房间信息失败:', response?.message || '未知错误')
-    //       }
-    //       resolve()
-    //     },
-    //   )
-    // })
   }
 
   // 从后台获取房间信息并初始化
@@ -303,7 +249,7 @@ export class VideoSyncManager {
     })
   }
 
-  // 设置消息监听器
+  // 设置消息监听器 视频实践触发器
   private setupMessageListeners(): void {
     this.messageHandler = (message: any) => {
       if (!this.controller || !this.roomId || message.roomId !== this.roomId) {
@@ -347,6 +293,19 @@ export class VideoSyncManager {
           this.controller.pause()
           break
         case MessageType.SEEK:
+          // 计算延迟补偿后的时间
+          this.eventLock++
+          if (!isPlaying) {
+            this.controller.seekTo(currentTime)
+          } else {
+            const targetTime = currentTime
+            const latencyCompensation = this.calculateLatencyCompensation(targetTime)
+            console.log(`跳转补偿: 原始时间=${targetTime}, 补偿后=${latencyCompensation}, 延迟=${this.networkLatency}ms`)
+
+            this.controller.seekTo(latencyCompensation)
+          }
+          break
+        case MessageType.SYNC:
           // 计算延迟补偿后的时间
           this.eventLock++
           if (!isPlaying) {
@@ -426,6 +385,9 @@ export class VideoSyncManager {
 
     // 获取视频元素
     const videoElement = document.querySelector('video')
+    if (window.self !== window.top) {
+      console.log('iframe', videoElement)
+    }
     if (!videoElement) {
       return
     }
@@ -515,11 +477,39 @@ export class VideoSyncManager {
         console.error('发送跳转消息失败:', error)
       }
     }
-
+    this.playingHandler = async () => {
+      console.log('playingHandler')
+      if (this.isBuffering) {
+        const bufferTime = Date.now() - this.lastBufferStart
+        if (bufferTime > 600) {
+          // 获取同步的信息  然后更新
+          console.log('playingHandler 缓冲时间:', bufferTime)
+          const videoData = await sendMessagePromise({
+            type: 'VIDEO_STATUS',
+            data: {
+              roomId: this.roomId,
+              senderId: await getUserId(),
+            },
+          }) // 触发同步
+          if (videoData.success) {
+            console.log('playingHandler 获取同步信息:', videoData.videoStatus)
+            this.setVideoStatus(videoData.videoStatus)
+          }
+        }
+      }
+    }
+    this.waitingHandler = async () => {
+      console.log('bufferHandler')
+      this.lastBufferStart = Date.now()
+      this.isBuffering = true // 标记为缓冲中
+    }
     // 添加监听器
     videoElement.addEventListener('play', this.playHandler)
     videoElement.addEventListener('pause', this.pauseHandler)
     videoElement.addEventListener('seeked', this.seekedHandler)
+    // 缓冲后开始
+    videoElement.addEventListener('playing', this.playingHandler)
+    videoElement.addEventListener('waiting', this.waitingHandler)
   }
   public getCurrentVideo() {
     return {
@@ -529,6 +519,44 @@ export class VideoSyncManager {
     }
   }
 
+  public setVideoStatus(videoStatus: { currentTime: number; isPlaying: boolean; lastUpdate: number }) {
+    const { currentTime, isPlaying } = videoStatus
+    this.eventLock++
+    if (!isPlaying) {
+      console.log('setVideoStatus 跳转时间:', currentTime)
+      this.controller?.seekTo(currentTime)
+    } else {
+      const targetTime = currentTime
+      const latencyCompensation = this.calculateLatencyCompensation(targetTime)
+      console.log(`跳转补偿: 原始时间=${targetTime}, 补偿后=${latencyCompensation}, 延迟=${this.networkLatency}ms`)
+
+      this.controller?.seekTo(latencyCompensation)
+    }
+  }
+
+  // 静态方法：检查是否可以创建VideoSyncManager
+  public static canCreate(): boolean {
+    return hasVideoElement()
+  }
+
+  // 静态方法：创建VideoSyncManager（只有在能创建时才创建）
+  public static create(
+    backgroundPort: globalThis.Browser.runtime.Port,
+    initialRoomId?: string,
+    isInitialHost?: boolean,
+    initialVideoStatus?: {
+      currentTime: number
+      isPlaying: boolean
+      lastUpdate: number
+    },
+  ): VideoSyncManager | null {
+    if (!VideoSyncManager.canCreate()) {
+      console.log('页面中未找到视频元素，无法创建VideoSyncManager')
+      return null
+    }
+
+    return new VideoSyncManager(backgroundPort, initialRoomId, isInitialHost, initialVideoStatus)
+  }
   // 清理资源
   public async cleanup(): Promise<void> {
     // // 停止同步间隔
@@ -562,6 +590,14 @@ export class VideoSyncManager {
       if (this.seekedHandler) {
         videoElement.removeEventListener('seeked', this.seekedHandler)
         this.seekedHandler = null
+      }
+      if (this.playingHandler) {
+        videoElement.removeEventListener('playing', this.playingHandler)
+        this.playingHandler = null
+      }
+      if (this.waitingHandler) {
+        videoElement.removeEventListener('waiting', this.waitingHandler)
+        this.waitingHandler = null
       }
     }
     // 移除backgroundPort监听
