@@ -18,6 +18,9 @@ node_modules/
 frontend.md
 everyday.md
 rule.md
+.vscode
+
+.cursor
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

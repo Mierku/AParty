@@ -323,6 +323,7 @@ export default defineBackground(async () => {
                 site: message.data.site,
               }
               browser.tabs.update(tabId, { url: message.data.url })
+              // console.log('urlChange', roomsInfo[message.roomId])
             }
           }
           urlChangeListeners[tabId] = urlChangeListener
@@ -333,6 +334,7 @@ export default defineBackground(async () => {
             console.log('historyStateUpdated', details)
             // 先检查权限
             const { url, tabId: navTabId } = details
+            const frames = await browser.webNavigation.getAllFrames({ tabId })
             if (tabsRooms[navTabId]) {
               const roomId = tabsRooms[navTabId]
               const roomInfo = roomsInfo[roomId]
@@ -342,22 +344,50 @@ export default defineBackground(async () => {
                 console.log('房主', roomInfo.host, '当前url', url)
                 if (roomInfo.url !== url && isSupportedVideoPage(url)) {
                   console.log('准备发送')
-                  browser.tabs.sendMessage(navTabId, { action: 'video_status', url }, async (response) => {
-                    if (response.success) {
-                      console.log('向后端发送url变更通知', response)
-                      const { video } = response
-                      websocketService.send({
-                        type: MessageType.URL_CHANGE,
-                        roomId,
-                        senderId: await getUserId(),
-                        data: {
+                  const responses = await Promise.all(
+                    frames!.map((frame) =>
+                      browser.tabs.sendMessage(
+                        tabId,
+                        {
+                          action: 'GET_VIDEO_STATUS',
                           url,
-                          site: roomInfo.site,
-                          ...video,
                         },
-                      })
-                    }
-                  })
+                        { frameId: frame.frameId },
+                      ),
+                    ),
+                  )
+                  const response = responses.find((r) => r.success)
+                  if (response) {
+                    console.log('向后端发送url变更通知', response)
+                    const { video } = response
+                    websocketService.send({
+                      type: MessageType.URL_CHANGE,
+                      roomId,
+                      senderId: await getUserId(),
+                      data: {
+                        url,
+                        site: roomInfo.site,
+                        video,
+                      },
+                    })
+                  }
+
+                  // browser.tabs.sendMessage(navTabId, { action: 'GET_VIDEO_STATUS', url }, async (response) => {
+                  //   if (response.success) {
+                  //     console.log('向后端发送url变更通知', response)
+                  //     const { video } = response
+                  //     websocketService.send({
+                  //       type: MessageType.URL_CHANGE,
+                  //       roomId,
+                  //       senderId: await getUserId(),
+                  //       data: {
+                  //         url,
+                  //         site: roomInfo.site,
+                  //         ...video,
+                  //       },
+                  //     })
+                  //   }
+                  // })
                 }
               }
             }

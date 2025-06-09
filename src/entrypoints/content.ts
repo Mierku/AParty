@@ -3,109 +3,18 @@ import { getUserId } from '../utils/storage'
 import { MessageType } from '../utils/constants'
 import websocketService, { sendMessage, Message } from '../utils/websocket'
 import { sendMessagePromise } from '@/utils/message'
+import './style.css'
+import { createApp } from 'vue'
+import App from '@/entrypoints/chat-panel.vue'
 
 // 内容脚本的主入口点
 export default defineContentScript({
   // matches: ['*://*.bilibili.com/*', '*://*.youtube.com/*'],
   matches: ['<all_urls>'],
-  // allFrames: true,
-  async main() {
+  cssInjectionMode: 'ui',
+
+  async main(ctx) {
     console.log('视频同步插件已加载')
-
-    // 创建悬浮按钮
-    const createFloatingButton = () => {
-      // 检查是否已存在按钮，避免重复创建
-      if (document.getElementById('video-sync-button')) {
-        return
-      }
-
-      const button = document.createElement('button')
-      button.id = 'video-sync-button'
-      button.textContent = '发送VIDEO_DETECT'
-      button.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 10000;
-        padding: 10px 15px;
-        background: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 14px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        transition: all 0.3s ease;
-      `
-
-      // 悬停效果
-      button.addEventListener('mouseenter', () => {
-        button.style.background = '#45a049'
-        button.style.transform = 'scale(1.05)'
-      })
-
-      button.addEventListener('mouseleave', () => {
-        button.style.background = '#4CAF50'
-        button.style.transform = 'scale(1)'
-      })
-
-      // 点击事件
-      button.addEventListener('click', async () => {
-        try {
-          button.textContent = '发送中...'
-          button.disabled = true
-
-          // const backgroundPort = backgroundPortListener()
-          const userId = await getUserId()
-
-          // 发送VIDEO_DETECT消息
-          const response = await sendMessagePromise({
-            action: 'VIDEO_DETECT',
-            data: {
-              // backgroundPort,
-              roomId: currentRoomId || 'test-room-' + Date.now(),
-              isHost: true,
-            },
-          })
-
-          console.log('VIDEO_DETECT消息发送成功:', response)
-
-          // 显示成功状态
-          button.textContent = '发送成功!'
-          button.style.background = '#2196F3'
-
-          // 2秒后恢复原状
-          setTimeout(() => {
-            button.textContent = '发送VIDEO_DETECT'
-            button.style.background = '#4CAF50'
-            button.disabled = false
-          }, 2000)
-        } catch (error) {
-          console.error('发送VIDEO_DETECT消息失败:', error)
-
-          // 显示错误状态
-          button.textContent = '发送失败'
-          button.style.background = '#f44336'
-
-          // 2秒后恢复原状
-          setTimeout(() => {
-            button.textContent = '发送VIDEO_DETECT'
-            button.style.background = '#4CAF50'
-            button.disabled = false
-          }, 2000)
-        }
-      })
-
-      // 添加到页面
-      document.body.appendChild(button)
-    }
-
-    // 页面加载完成后创建按钮
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', createFloatingButton)
-    } else {
-      createFloatingButton()
-    }
 
     // observeUrlChanges(handleUrlChange)
     // 存储视频同步管理器实例，以便后续清理
@@ -186,7 +95,7 @@ export default defineContentScript({
           // createVideoManager(backgroundPort, roomInfo.roomId, roomInfo.isHost, videoData.videoStatus)
         } else {
           // 有视频是不同的页面
-          console.log(3)
+
           // 如果房主是当前用户 则通知跳转
           if (roomInfo.host === roomInfo.senderId) {
             // 则通知更新
@@ -376,7 +285,7 @@ export default defineContentScript({
                   createRoomMessage,
                 },
               })
-              console.log('创建房间响应:', response)
+              console.log('创建房间响应:', response, createRoomMessage)
               if (!response.success) return
               // 返回成功结果给popup
               sendResponse({
@@ -490,19 +399,19 @@ export default defineContentScript({
           //     })
           //   }
           //   break
-          case 'video_status':
-            {
-              const video = videoSyncManager?.getCurrentVideo()
-              if (video) {
-                sendResponse({
-                  success: true,
-                  video,
-                })
-              } else {
-                sendResponse({ success: false, message: '视频管理器未初始化' })
-              }
-            }
-            break
+          // case 'video_status':
+          //   {
+          //     const video = videoSyncManager?.getCurrentVideo()
+          //     if (video) {
+          //       sendResponse({
+          //         success: true,
+          //         video,
+          //       })
+          //     } else {
+          //       sendResponse({ success: false, message: '视频管理器未初始化' })
+          //     }
+          //   }
+          //   break
           // 处理URL更新消息
           case 'URL_UPDATED':
             try {

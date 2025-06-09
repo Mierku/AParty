@@ -84,6 +84,16 @@ export default defineContentScript({
               sendResponse({ success: true })
             }
             break
+          case 'GET_VIDEO_STATUS':
+            {
+              const video = videoSyncManager?.getCurrentVideo()
+              if (video) {
+                sendResponse({ success: true, video })
+              } else {
+                sendResponse({ success: false, message: '视频管理器未初始化' })
+              }
+            }
+            break
           // 不需要回信息 不然多个脚本回信息会干扰创建房间
           default:
             break

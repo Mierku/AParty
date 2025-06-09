@@ -67,9 +67,11 @@ export interface RoomInfo {
   site: string // 当前网站
   controlMode: ControlMode
   participants: string[] // 参与者IDs
-  currentTime?: number // 当前视频时间
-  isPlaying?: boolean // 当前是否正在播放
-  lastUpdate?: number // 最后更新时间
+  video: {
+    currentTime?: number // 当前视频时间
+    isPlaying?: boolean // 当前是否正在播放
+    lastUpdate?: number // 最后更新时间
+  }
 }
 
 // WebSocket事件类型
