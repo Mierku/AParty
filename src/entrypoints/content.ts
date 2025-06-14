@@ -3,19 +3,37 @@ import { getUserId } from '../utils/storage'
 import { MessageType } from '../utils/constants'
 import websocketService, { sendMessage, Message } from '../utils/websocket'
 import { sendMessagePromise } from '@/utils/message'
-import './style.css'
-import { createApp } from 'vue'
-import App from '@/entrypoints/chat-panel.vue'
 
 // 内容脚本的主入口点
 export default defineContentScript({
   // matches: ['*://*.bilibili.com/*', '*://*.youtube.com/*'],
   matches: ['<all_urls>'],
-  cssInjectionMode: 'ui',
 
   async main(ctx) {
     console.log('视频同步插件已加载')
 
+    const ui = await createIframeUi(ctx, {
+      page: '/ap-panel.html',
+      position: 'overlay',
+      anchor: 'body',
+      zIndex: 9999,
+      onMount: (wrapper, iframe) => {
+        console.log('IFrame 已挂载:', iframe, wrapper)
+        // Add styles to the iframe like width
+        iframe.style.border = 'none'
+        iframe.style.width = '100%'
+        iframe.style.height = '100%'
+        wrapper.style.position = 'fixed'
+        wrapper.style.top = '0'
+        wrapper.style.right = '0'
+        wrapper.style.width = '360px'
+        wrapper.style.height = '100vh'
+      },
+    })
+
+    // Show UI to user
+    ui.mount()
+    console.log('UI.mount() 已调用')
     // observeUrlChanges(handleUrlChange)
     // 存储视频同步管理器实例，以便后续清理
     let videoSyncManager: VideoSyncManager | null = null

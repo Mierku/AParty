@@ -4,6 +4,7 @@ import { defineConfig } from 'wxt'
 export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
   srcDir: 'src',
+  
   manifest: {
     name: 'CocoParty 视频同步',
     description: '一个允许用户在不同浏览器上同步观看视频的扩展',
@@ -11,7 +12,7 @@ export default defineConfig({
     host_permissions: ['*://*.bilibili.com/*', '*://*.youtube.com/*'],
     web_accessible_resources: [
       {
-        resources: ['panel/index.html'],
+        resources: ['/ap-panel.html'],
         matches: ['<all_urls>'],
       },
     ],
