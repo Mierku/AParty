@@ -5,7 +5,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "wxt",
+    "dev": "wxt -p 3001",
     "dev:firefox": "wxt -b firefox",
     "dev:instance": "wxt dev -c wxt.config.instance.ts",
     "build": "wxt build",
