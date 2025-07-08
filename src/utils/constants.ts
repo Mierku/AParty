@@ -51,6 +51,7 @@ export enum MessageType {
   USER_LEAVE = 'USER_LEAVE',
   URL_CHANGE = 'URL_CHANGE',
   URL_SEND_UPDATED = 'URL_SEND_UPDATED',
+  CHAT = 'CHAT',
 }
 
 // 控制模式
@@ -79,5 +80,6 @@ export const WS_EVENTS = {
   CONNECT: 'connect',
   DISCONNECT: 'disconnect',
   MESSAGE: 'message',
+  CHAT: 'chat',
   ERROR: 'error',
 }

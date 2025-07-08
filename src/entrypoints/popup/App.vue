@@ -1,91 +1,11 @@
-<template>
-  <div class="container">
-    <h1>CocoParty 视频同步</h1>
-
-    <div v-if="loading" class="loading">加载中...</div>
-
-    <div v-else-if="!inRoom && !supportedSite" class="info-box">
-      <p>当前网站不支持创建房间</p>
-      <p class="site-note">请前往支持的视频网站：</p>
-      <ul>
-        <li>哔哩哔哩 (bilibili.com)</li>
-        <li>YouTube (youtube.com)</li>
-      </ul>
-      <button @click="checkState" class="btn btn-debug">检查状态</button>
-    </div>
-
-    <div v-else-if="!inRoom" class="room-controls">
-      <div class="create-room">
-        <h2>创建房间</h2>
-        <div v-if="isVideoPage" class="site-info">
-          <p>
-            当前视频: <span class="site-name">{{ currentUrl }}</span>
-          </p>
-        </div>
-        <div class="control-option">
-          <label>
-            <input type="radio" v-model="controlMode" value="HOST_ONLY" />
-            仅房主控制视频
-          </label>
-          <label>
-            <input type="radio" v-model="controlMode" value="ALL" />
-            所有人都可控制视频
-          </label>
-        </div>
-        <button @click="createRoom" class="btn btn-primary">创建房间</button>
-      </div>
-
-      <div class="divider">或</div>
-
-      <div class="join-room">
-        <h2>加入房间</h2>
-        <input type="text" v-model="roomIdToJoin" placeholder="输入房间ID" />
-        <button @click="joinRoom" class="btn btn-secondary" :disabled="!roomIdToJoin">加入房间</button>
-      </div>
-      <button @click="checkState" class="btn btn-debug">检查状态</button>
-    </div>
-
-    <div v-else class="room-info">
-      <h2>房间信息</h2>
-      <p>
-        房间ID: <span class="room-id">{{ roomId }}</span>
-      </p>
-      <p>
-        你的身份:
-        <span class="host-status">{{ isHost ? '房主' : '参与者' }}</span>
-      </p>
-      <p v-if="roomInfo">
-        控制模式:
-        <span>{{ roomInfo.controlMode === 'HOST_ONLY' ? '仅房主控制' : '所有人可控制' }}</span>
-      </p>
-      <p v-if="roomInfo">
-        参与人数: <span>{{ roomInfo.participants?.length || 1 }}</span>
-      </p>
-
-      <div v-if="isHost" class="host-controls">
-        <h3>房主控制</h3>
-        <div class="control-option">
-          <label>
-            <input type="radio" v-model="roomControlMode" value="HOST_ONLY" @change="changeControlMode" />
-            仅房主控制视频
-          </label>
-          <label>
-            <input type="radio" v-model="roomControlMode" value="ALL" @change="changeControlMode" />
-            所有人都可控制视频
-          </label>
-        </div>
-      </div>
-
-      <button @click="leaveRoom" class="btn btn-danger">退出房间</button>
-      <button @click="checkState" class="btn btn-debug">检查状态</button>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import DisplayMain from './components/display/main.vue'
+import DisplayJoin from './components/display/join.vue'
+import DisplayInRoom from './components/display/inRoom.vue'
 import { ControlMode, MessageType, SUPPORTED_SITES, RoomInfo } from '../../utils/constants'
 import { generateRoomId, getUserId } from '../../utils/storage'
+
 // 响应类型定义
 interface RoomInfoResponse {
   success: boolean
@@ -119,7 +39,18 @@ const roomControlMode = ref(ControlMode.HOST_ONLY)
 const currentUrl = ref('')
 const supportedSite = ref(false)
 const isVideoPage = ref(false)
+const componentId = ref<number>(0)
 
+provide('loading', loading)
+provide('componentId', componentId)
+provide('inRoom', inRoom)
+provide('roomId', roomId)
+provide('isHost', isHost)
+provide('roomInfo', roomInfo)
+provide('controlMode', controlMode)
+provide('roomIdToJoin', roomIdToJoin)
+provide('roomControlMode', roomControlMode)
+provide('currentUrl', currentUrl)
 // 辅助函数：基于URL检查是否支持创建房间
 const checkSupportedCreatePageByUrl = (url: string): boolean => {
   for (const site of SUPPORTED_SITES) {
@@ -140,16 +71,6 @@ const checkSupportedVideoPageByUrl = (url: string): boolean => {
     }
   }
   return false
-}
-
-// 辅助函数：基于URL获取当前站点信息
-const getCurrentSiteByUrl = (url: string): { name: string; domain: string } | null => {
-  for (const site of SUPPORTED_SITES) {
-    if (url.includes(site.domain)) {
-      return { name: site.name, domain: site.domain }
-    }
-  }
-  return null
 }
 
 // 检查当前页面是否支持视频功能
@@ -320,21 +241,21 @@ const getCurrentTab = async () => {
 }
 
 // 发送消息到内容脚本
-const sendToContentScript = async (message: any, frameId?: number) => {
-  try {
-    const tab = await getCurrentTab()
+// const sendToContentScript = async (message: any, frameId?: number) => {
+//   try {
+//     const tab = await getCurrentTab()
 
-    if (!tab.id) {
-      throw new Error('无效的标签ID')
-    }
+//     if (!tab.id) {
+//       throw new Error('无效的标签ID')
+//     }
 
-    // 改用Promise方式发送消息
-    return await browser.tabs.sendMessage(tab.id!, message, { frameId })
-  } catch (error) {
-    console.error('向内容脚本发送消息失败:', error)
-    throw error
-  }
-}
+//     // 改用Promise方式发送消息
+//     return await browser.tabs.sendMessage(tab.id!, message, { frameId })
+//   } catch (error) {
+//     console.error('向内容脚本发送消息失败:', error)
+//     throw error
+//   }
+// }
 
 // 创建房间
 const createRoom = async () => {
@@ -501,171 +422,283 @@ const checkState = async () => {
 }
 </script>
 
-<style>
+<template>
+  <div class="container">
+    <div v-if="loading" class="loading">加载中...</div>
+
+    <!-- <div v-else-if="!inRoom && !supportedSite" class="info-box">
+      <p>当前网站不支持创建房间</p>
+      <p class="site-note">请前往支持的视频网站：</p>
+      <ul>
+        <li>哔哩哔哩 (bilibili.com)</li>
+        <li>YouTube (youtube.com)</li>
+      </ul>
+      <button @click="checkState" class="btn btn-debug">检查状态</button>
+    </div> -->
+
+    <!-- <div v-if="!inRoom" class="room-controls">
+      <div class="create-room">
+        <h2>创建房间</h2>
+        <div v-if="isVideoPage" class="site-info">
+          <p>
+            当前视频: <span class="site-name">{{ currentUrl }}</span>
+          </p>
+        </div>
+        <div class="control-option">
+          <label>
+            <input type="radio" v-model="controlMode" value="HOST_ONLY" />
+            仅房主控制视频
+          </label>
+          <label>
+            <input type="radio" v-model="controlMode" value="ALL" />
+            所有人都可控制视频
+          </label>
+        </div>
+        <button @click="createRoom" class="btn btn-primary">创建房间</button>
+      </div>
+
+      <div class="divider">或</div>
+
+      <div class="join-room">
+        <h2>加入房间</h2>
+        <input type="text" v-model="roomIdToJoin" placeholder="输入房间ID" />
+        <button @click="joinRoom" class="btn btn-secondary" :disabled="!roomIdToJoin">加入房间</button>
+      </div>
+      <button @click="checkState" class="btn btn-debug">检查状态</button>
+    </div>
+
+    <div v-else class="room-info">
+      <h2>房间信息</h2>
+      <p>
+        房间ID: <span class="room-id">{{ roomId }}</span>
+      </p>
+      <p>
+        你的身份:
+        <span class="host-status">{{ isHost ? '房主' : '参与者' }}</span>
+      </p>
+      <p v-if="roomInfo">
+        控制模式:
+        <span>{{ roomInfo.controlMode === 'HOST_ONLY' ? '仅房主控制' : '所有人可控制' }}</span>
+      </p>
+      <p v-if="roomInfo">
+        参与人数: <span>{{ roomInfo.participants?.length || 1 }}</span>
+      </p>
+
+      <div v-if="isHost" class="host-controls">
+        <h3>房主控制</h3>
+        <div class="control-option">
+          <label>
+            <input type="radio" v-model="roomControlMode" value="HOST_ONLY" @change="changeControlMode" />
+            仅房主控制视频
+          </label>
+          <label>
+            <input type="radio" v-model="roomControlMode" value="ALL" @change="changeControlMode" />
+            所有人都可控制视频
+          </label>
+        </div>
+      </div>
+
+      <button @click="leaveRoom" class="btn btn-danger">退出房间</button>
+      <button @click="checkState" class="btn btn-debug">检查状态</button>
+    </div> -->
+    <header class="header">
+      <div class="header-left">
+        <img class="avatar" src="http://placehold.co/32x32" alt="logo" />
+        <span class="usr-name"> Hello, Mierku! </span>
+      </div>
+    </header>
+    <main class="main">
+      <display-main v-if="componentId === 0 && !inRoom" />
+      <display-in-room v-if="componentId === 0 && inRoom" />
+      <display-join v-if="componentId === 2" />
+    </main>
+  </div>
+</template>
+
+<style lang="scss" scoped>
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 40px;
+  margin-bottom: 8px;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.usr-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
 .container {
-  width: 350px;
+  width: 380px;
+  height: 340px;
+  background-color: #141414;
   padding: 16px;
   font-family: 'Arial', sans-serif;
 }
-
-h1 {
-  font-size: 18px;
-  text-align: center;
-  margin-bottom: 16px;
-  color: #333;
+.main {
+  height: calc(100% - 40px - 16px);
 }
-
-h2 {
-  font-size: 16px;
-  margin-bottom: 12px;
-  color: #444;
-}
-
 .loading {
   text-align: center;
   margin: 24px 0;
 }
 
-.info-box {
-  background-color: #f8f9fa;
-  border-radius: 4px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.site-note {
-  margin-bottom: 4px;
-  font-weight: bold;
-}
-
-.room-controls {
+.flex-box {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
   gap: 16px;
 }
 
-.create-room,
-.join-room {
-  background-color: #f8f9fa;
-  border-radius: 4px;
-  padding: 12px;
+.avatar {
+  border-radius: 50%;
 }
+// .info-box {
+//   background-color: #f8f9fa;
+//   border-radius: 4px;
+//   padding: 12px;
+//   margin-bottom: 12px;
+// }
 
-.site-info {
-  background-color: #e6f7ff;
-  border-radius: 4px;
-  padding: 8px;
-  margin-bottom: 12px;
-  font-size: 14px;
-}
+// .site-note {
+//   margin-bottom: 4px;
+//   font-weight: bold;
+// }
 
-.site-name {
-  font-weight: bold;
-  word-break: break-all;
-}
+// .room-controls {
+//   display: flex;
+//   flex-direction: column;
+//   gap: 16px;
+// }
 
-.control-option {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-}
+// .create-room,
+// .join-room {
+//   background-color: #f8f9fa;
+//   border-radius: 4px;
+//   padding: 12px;
+// }
 
-.divider {
-  text-align: center;
-  position: relative;
-  margin: 8px 0;
-}
+// .site-info {
+//   background-color: #e6f7ff;
+//   border-radius: 4px;
+//   padding: 8px;
+//   margin-bottom: 12px;
+//   font-size: 14px;
+// }
 
-.divider::before,
-.divider::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  width: 40%;
-  height: 1px;
-  background-color: #ddd;
-}
+// .site-name {
+//   font-weight: bold;
+//   word-break: break-all;
+// }
 
-.divider::before {
-  left: 0;
-}
+// .control-option {
+//   display: flex;
+//   flex-direction: column;
+//   gap: 8px;
+//   margin-bottom: 12px;
+// }
 
-.divider::after {
-  right: 0;
-}
+// .divider {
+//   text-align: center;
+//   position: relative;
+//   margin: 8px 0;
+// }
 
-input[type='text'] {
-  width: 100%;
-  padding: 8px;
-  box-sizing: border-box;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-bottom: 12px;
-}
+// .divider::before,
+// .divider::after {
+//   content: '';
+//   position: absolute;
+//   top: 50%;
+//   width: 40%;
+//   height: 1px;
+//   background-color: #ddd;
+// }
 
-.btn {
-  width: 100%;
-  padding: 8px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: bold;
-}
+// .divider::before {
+//   left: 0;
+// }
 
-.btn-primary {
-  background-color: #1890ff;
-  color: white;
-}
+// .divider::after {
+//   right: 0;
+// }
 
-.btn-secondary {
-  background-color: #52c41a;
-  color: white;
-}
+// input[type='text'] {
+//   width: 100%;
+//   padding: 8px;
+//   box-sizing: border-box;
+//   border: 1px solid #ddd;
+//   border-radius: 4px;
+//   margin-bottom: 12px;
+// }
 
-.btn-danger {
-  background-color: #ff4d4f;
-  color: white;
-  margin-top: 16px;
-}
+// .btn {
+//   width: 100%;
+//   padding: 8px;
+//   border: none;
+//   border-radius: 4px;
+//   cursor: pointer;
+//   font-weight: bold;
+// }
 
-.btn:disabled {
-  background-color: #d9d9d9;
-  cursor: not-allowed;
-}
+// .btn-primary {
+//   background-color: #1890ff;
+//   color: white;
+// }
 
-.room-info {
-  background-color: #f8f9fa;
-  border-radius: 4px;
-  padding: 12px;
-}
+// .btn-secondary {
+//   background-color: #52c41a;
+//   color: white;
+// }
 
-.room-id {
-  font-weight: bold;
-  color: #1890ff;
-}
+// .btn-danger {
+//   background-color: #ff4d4f;
+//   color: white;
+//   margin-top: 16px;
+// }
 
-.host-status {
-  font-weight: bold;
-  color: #52c41a;
-}
+// .btn:disabled {
+//   background-color: #d9d9d9;
+//   cursor: not-allowed;
+// }
 
-.host-controls {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #eee;
-}
+// .room-info {
+//   background-color: #f8f9fa;
+//   border-radius: 4px;
+//   padding: 12px;
+// }
 
-.host-controls h3 {
-  font-size: 14px;
-  margin-bottom: 8px;
-}
+// .room-id {
+//   font-weight: bold;
+//   color: #1890ff;
+// }
 
-.btn-debug {
-  background-color: #8c8c8c;
-  color: white;
-  font-size: 12px;
-  padding: 4px;
-  margin-top: 10px;
-}
+// .host-status {
+//   font-weight: bold;
+//   color: #52c41a;
+// }
+
+// .host-controls {
+//   margin-top: 16px;
+//   padding-top: 16px;
+//   border-top: 1px solid #eee;
+// }
+
+// .host-controls h3 {
+//   font-size: 14px;
+//   margin-bottom: 8px;
+// }
+
+// .btn-debug {
+//   background-color: #8c8c8c;
+//   color: white;
+//   font-size: 12px;
+//   padding: 4px;
+//   margin-top: 10px;
+// }
 </style>

@@ -106,7 +106,7 @@ export default defineContentScript({
     })
 
     function backgroundPortListener() {
-      return browser.runtime.connect({ name: 'keep-alive' })
+      return browser.runtime.connect({ name: 'video-control' })
     }
   },
 })

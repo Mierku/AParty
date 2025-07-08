@@ -1,5 +1,10 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import './style.scss'
+import { createPinia } from 'pinia'
 
-createApp(App).mount('#app')
+console.log('iframe/panel/main.ts')
+
+const app = createApp(App)
+app.use(createPinia())
+app.mount('#app')

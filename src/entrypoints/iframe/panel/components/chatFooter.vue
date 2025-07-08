@@ -12,7 +12,7 @@ function sendMessage() {
 </script>
 <template>
   <div class="chat-footer">
-    <a-input v-model="chatText">
+    <a-input v-model="chatText" @keyup.enter="sendMessage">
       <template #bottom>
         <div class="chat-operation">
           <div class="flex">

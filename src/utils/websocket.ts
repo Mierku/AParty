@@ -194,11 +194,32 @@ class RealWebSocketService {
       console.log('收到用户离开消息:', message)
       this.triggerEvent(WS_EVENTS.MESSAGE, message)
     })
-
+    // 监听用户离开消息
+    this.socket.on(MessageType.CHAT, (message: Message) => {
+      console.log('收到聊天消息:', message)
+      this.triggerEvent(WS_EVENTS.CHAT, message)
+    })
     // 监听错误消息
     this.socket.on('error', (error: any) => {
       console.error('WebSocket错误:', error)
       this.triggerEvent(WS_EVENTS.ERROR, error)
+    })
+
+    // 监听聊天信息
+    this.socket.on(MessageType.CHAT, (message: Message) => {
+      console.log('收到聊天信息:', message)
+      // 保存房间信息到存储
+      if (message.data) {
+        // 如果包含房间ID，保存当前房间ID
+        if (message.data.roomId) {
+          this.currentRoomId = message.data.roomId
+        }
+
+        // 保存房间详情
+        saveRoomInfo(message.data)
+      }
+
+      this.triggerEvent(WS_EVENTS.MESSAGE, message)
     })
   }
 

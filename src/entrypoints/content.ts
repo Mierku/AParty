@@ -3,7 +3,32 @@ import { getUserId } from '../utils/storage'
 import { MessageType } from '../utils/constants'
 import websocketService, { sendMessage, Message } from '../utils/websocket'
 import { sendMessagePromise } from '@/utils/message'
+import { HtmlPublicPath } from 'wxt/browser'
 
+async function createChatPanel(ctx: any) {
+  const ui = await createIframeUi(ctx, {
+    page: `/ap-panel.html` as HtmlPublicPath,
+    position: 'overlay',
+    anchor: 'body',
+    zIndex: 9999,
+    onMount: (wrapper, iframe) => {
+      console.log('IFrame 已挂载:', iframe, wrapper)
+      // Add styles to the iframe like width
+      iframe.style.border = 'none'
+      iframe.style.width = '100%'
+      iframe.style.height = '100%'
+      wrapper.style.position = 'fixed'
+      wrapper.style.top = '0'
+      wrapper.style.right = '0'
+      wrapper.style.width = '360px'
+      wrapper.style.height = '100vh'
+    },
+  })
+
+  // Show UI to user
+  ui.mount()
+  console.log('UI.mount() 已调用')
+}
 // 内容脚本的主入口点
 export default defineContentScript({
   // matches: ['*://*.bilibili.com/*', '*://*.youtube.com/*'],
@@ -12,28 +37,6 @@ export default defineContentScript({
   async main(ctx) {
     console.log('视频同步插件已加载')
 
-    const ui = await createIframeUi(ctx, {
-      page: '/ap-panel.html',
-      position: 'overlay',
-      anchor: 'body',
-      zIndex: 9999,
-      onMount: (wrapper, iframe) => {
-        console.log('IFrame 已挂载:', iframe, wrapper)
-        // Add styles to the iframe like width
-        iframe.style.border = 'none'
-        iframe.style.width = '100%'
-        iframe.style.height = '100%'
-        wrapper.style.position = 'fixed'
-        wrapper.style.top = '0'
-        wrapper.style.right = '0'
-        wrapper.style.width = '360px'
-        wrapper.style.height = '100vh'
-      },
-    })
-
-    // Show UI to user
-    ui.mount()
-    console.log('UI.mount() 已调用')
     // observeUrlChanges(handleUrlChange)
     // 存储视频同步管理器实例，以便后续清理
     let videoSyncManager: VideoSyncManager | null = null
@@ -82,7 +85,7 @@ export default defineContentScript({
 
       if (!response.success) return
       console.log('收到房间信息 isInRoom:', response)
-      // const backgroundPort = backgroundPortListener()
+
       const { roomInfo } = response.data
       // 是否是视频页面( 导入到目标页面  刷新页面 自主进入其他页面)
 
@@ -110,6 +113,8 @@ export default defineContentScript({
               videoData,
             },
           })
+          // 创建聊天面板
+          createChatPanel(ctx)
           // createVideoManager(backgroundPort, roomInfo.roomId, roomInfo.isHost, videoData.videoStatus)
         } else {
           // 有视频是不同的页面
@@ -125,6 +130,8 @@ export default defineContentScript({
                 isHost: roomInfo.isHost,
               },
             })
+            // 创建聊天面板
+            createChatPanel(ctx)
             // createVideoManager(backgroundPort, roomInfo.roomId, roomInfo.isHost)
             // 刷新进的新房间
             await sendMessagePromise({
@@ -138,22 +145,6 @@ export default defineContentScript({
         }
       }
     }
-    // function backgroundPortListener() {
-    //   return browser.runtime.connect({ name: 'keep-alive' })
-    // }
-    // function handleUrlChange(newUrl: string) {
-    //   // 还要加一个权限控制 和判断是否是视频页面
-    //   console.log('收到url变化消息:', newUrl)
-    //   if (isSupportedVideoPage()) {
-    //     sendMessagePromise({
-    //       action: 'URL_SEND_UPDATED',
-    //       data: {
-    //         url: newUrl,
-    //         video: videoSyncManager!.getCurrentVideo(),
-    //       },
-    //     })
-    //   }
-    // }
 
     await isInRoom()
     // 提供API给popup 页background面调用
@@ -222,6 +213,8 @@ export default defineContentScript({
               })
               console.log('收到视频状态:', videoData)
               if (!videoData.success) return
+              // 创建聊天面板
+              createChatPanel(ctx)
               // 创建视频管理器
               await sendMessagePromise({
                 action: 'VIDEO_DETECT',
@@ -303,8 +296,10 @@ export default defineContentScript({
                   createRoomMessage,
                 },
               })
-              console.log('创建房间响应:', response, createRoomMessage)
+
               if (!response.success) return
+              // 创建聊天面板
+              createChatPanel(ctx)
               // 返回成功结果给popup
               sendResponse({
                 success: true,
@@ -334,10 +329,7 @@ export default defineContentScript({
               await sendMessagePromise({
                 action: 'CLEAN_VIDEO_MANAGER',
               })
-              // if (videoSyncManager) {
-              //   videoSyncManager.cleanup()
-              //   videoSyncManager = null
-              // }
+
               sendResponse({ success: true })
             } catch (error) {
               console.error('离开房间失败:', error)

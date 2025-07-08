@@ -12,12 +12,16 @@ interface RoomsInfo {
   [roomId: string]: RoomInfo // 房间ID -> 房间信息
 }
 
+const user = {}
+let cookie: string | null = null
 // 存储标签页ID到房间ID的映射关系
 const tabsRooms: TabsRooms = {}
 // 存储房间信息
 const roomsInfo: RoomsInfo = {}
 // 管理back和content的长连接
-let LongPort: Browser.runtime.Port[] = []
+let VideoPort: Browser.runtime.Port[] = []
+let ChatPort: Browser.runtime.Port[] = []
+let ChatFrameId: number | null = null // 一个浏览器只能存储一个chatFrameId
 // 存储WebSocket消息监听器
 const messageListeners: { [tabId: number]: (wsMessage: any) => void } = {}
 // 存储重定向监听器
@@ -27,73 +31,92 @@ const urlChangeListeners: { [tabId: number]: (message: any) => void } = {}
 // 存储导航监听器
 const navigationListeners: { [tabId: number]: (details: any) => void } = {}
 
+const chatListeners: { [tabId: number]: (message: any) => void } = {}
 // 后台脚本的主入口点
 export default defineBackground(async () => {
   console.log('视频同步插件后台已启动')
+  cookie = await getAuthToken()
+  console.log('cookie', cookie)
 
   // 监听来自弹出和content窗口的消息
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     ;(async () => {
       console.log('后台收到消息:', message.type, sender)
+
       const tabId = sender?.tab?.id
       const type = message.type || message.action
       // 使用switch/case结构处理消息
       switch (type) {
         // 创建房间
         case 'CREATE_ROOM':
-          if (!tabId) return true
-          const { createRoomMessage } = message.data
-          await websocketService.ensureConnected()
-          console.log('创建房间:', createRoomMessage, message)
-          // 如果消息来自内容脚本，获取标签页ID
-          if (tabId) {
-            // 保存标签页ID到房间ID的映射
-            tabsRooms[tabId] = createRoomMessage.roomId
-            console.log('标签页', tabId, '创建了房间', createRoomMessage.roomId)
+          {
+            if (!tabId) return true
 
-            // 存储房间基本信息
-            if (createRoomMessage.data) {
-              roomsInfo[createRoomMessage.roomId] = createRoomMessage.data
+            const { createRoomMessage } = message.data
+            await websocketService.ensureConnected()
+            console.log('创建房间:', createRoomMessage, message)
+            // 如果消息来自内容脚本，获取标签页ID
+            if (tabId) {
+              // 保存标签页ID到房间ID的映射
+              tabsRooms[tabId] = createRoomMessage.roomId
+              console.log('标签页', tabId, '创建了房间', createRoomMessage.roomId)
+
+              // 存储房间基本信息
+              if (createRoomMessage.data) {
+                roomsInfo[createRoomMessage.roomId] = createRoomMessage.data
+              }
             }
+            websocketService.send(createRoomMessage)
+            // 注册聊天消息监听
+            const chatListener = (message: any) => {
+              browser.tabs.sendMessage(tabId, message)
+            }
+            chatListeners[tabId] = chatListener
+            await websocketService.on(WS_EVENTS.CHAT, chatListener)
+            // await websocketService.on('redirect', (message) => {
+            //   browser.tabs.update(tabId, { url: message.data.url })
+            // })
+            sendResponse({ success: true })
           }
-          await websocketService.send(createRoomMessage)
-          // await websocketService.on('redirect', (message) => {
-          //   browser.tabs.update(tabId, { url: message.data.url })
-          // })
-          sendResponse({ success: true })
           break
 
         // 加入房间
         case 'JOIN_ROOM':
-          if (!tabId) return true
-          const { joinRoomMessage } = message.data
-          console.log('加入房间:', joinRoomMessage.roomId)
-          await websocketService.ensureConnected()
-          // 使用函数顶部已声明的tabId
-          // 如果消息来自内容脚本或popup，获取标签页ID
-          if (tabId) {
-            // 保存标签页ID到房间ID的映射
-            tabsRooms[tabId] = joinRoomMessage.roomId
-            console.log('标签页', tabId, '加入了房间', joinRoomMessage.roomId)
+          {
+            if (!tabId) return true
+            const { joinRoomMessage } = message.data
+            console.log('加入房间:', joinRoomMessage.roomId)
+            await websocketService.ensureConnected()
+            // 使用函数顶部已声明的tabId
+            // 如果消息来自内容脚本或popup，获取标签页ID
+            if (tabId) {
+              // 保存标签页ID到房间ID的映射
+              tabsRooms[tabId] = joinRoomMessage.roomId
+              console.log('标签页', tabId, '加入了房间', joinRoomMessage.roomId)
+            }
+            const { room: roomInfo } = await websocketService.send(joinRoomMessage)
+            console.log('ws加入房间响应:', roomInfo)
+            if (roomInfo) {
+              roomsInfo[joinRoomMessage.roomId] = roomInfo
+            }
+            // 如果不是视频页面则重定向到视频页面
+            if (roomInfo.url !== sender.tab?.url) {
+              await browser.tabs.update(tabId, { url: roomInfo.url })
+            }
+            // 注册聊天消息监听
+            const chatListener = (message: any) => {
+              browser.tabs.sendMessage(tabId, message)
+            }
+            chatListeners[tabId] = chatListener
+            await websocketService.on(WS_EVENTS.CHAT, chatListener)
+            sendResponse({
+              success: true,
+              roomId: joinRoomMessage.roomId,
+              roomInfo: roomsInfo[message.data.roomId],
+              isHost: roomInfo ? roomInfo.host === joinRoomMessage.userId : false,
+            })
           }
-          const { room: roomInfo } = await websocketService.send(joinRoomMessage)
-          console.log('ws加入房间响应:', roomInfo)
-          if (roomInfo) {
-            roomsInfo[joinRoomMessage.roomId] = roomInfo
-          }
-          // 如果不是视频页面则重定向到视频页面
-          if (roomInfo.url !== sender.tab?.url) {
-            await browser.tabs.update(tabId, { url: roomInfo.url })
-          }
-
-          sendResponse({
-            success: true,
-            roomId: joinRoomMessage.roomId,
-            roomInfo: roomsInfo[message.data.roomId],
-            isHost: roomInfo ? roomInfo.host === joinRoomMessage.userId : false,
-          })
           break
-
         // 检查当前房间
         case 'CHECK_ROOM':
           {
@@ -137,8 +160,8 @@ export default defineBackground(async () => {
               console.log('标签页', leaveTabId, '离开了房间', roomId)
 
               // 断开长连接
-              LongPort[leaveTabId].disconnect()
-              delete LongPort[leaveTabId]
+              VideoPort[leaveTabId].disconnect()
+              delete VideoPort[leaveTabId]
               // 注销websocket注册事件
               if (messageListeners[leaveTabId]) {
                 websocketService.off(WS_EVENTS.MESSAGE, messageListeners[leaveTabId])
@@ -294,11 +317,11 @@ export default defineBackground(async () => {
           break
         case 'VIDEO_RECEIVE_EVENT':
           if (!tabId) return true
-          console.log('注册websocket_video事件:', message, LongPort[tabId])
+          console.log('注册websocket_video事件:', message, VideoPort[tabId])
           // 创建监听器函数
           const messageListener = (wsMessage: any) => {
-            console.log('发送视频控制事件: port', LongPort[tabId], message)
-            LongPort[tabId].postMessage({
+            console.log('发送视频控制事件: port', VideoPort[tabId], message)
+            VideoPort[tabId].postMessage({
               type: 'VIDEO_CONTROL_EVENT',
               data: wsMessage,
             })
@@ -425,6 +448,43 @@ export default defineBackground(async () => {
           }
           sendResponse({ success: true })
           break
+        case 'CHAT_CONNECT':
+          {
+            if (!tabId) return true
+            console.log('CHAT_CONNECT', sender?.frameId)
+            if (sender?.frameId) {
+              // 方便backgournd 发送消息
+              ChatFrameId = sender.frameId
+              sendResponse({ success: true })
+            } else {
+              sendResponse({ success: false, message: '未找到frameId' })
+            }
+          }
+          break
+        // 接受iframe的消息
+        case 'CHAT':
+          {
+            if (!tabId) return true
+            try {
+              const { senderId, msgType, content } = message.data
+              const roomId = tabsRooms[tabId]
+              const response: any = await websocketService.send({
+                type: MessageType.CHAT,
+                roomId,
+                senderId,
+                data: {
+                  msgType,
+                  content,
+                },
+              })
+              console.log('websocketService.send', response)
+              sendResponse({ success: true, message: response.message })
+            } catch (error) {
+              console.log('chat发送消息失败', error)
+              sendResponse({ success: false, message: '发送消息失败' })
+            }
+          }
+          break
         // 未知消息类型
         default:
           break
@@ -438,46 +498,78 @@ export default defineBackground(async () => {
 
   // 监听来自content窗口的消息(长连接 视频控制)
   browser.runtime.onConnect.addListener(function (port) {
-    console.log('收到来自content窗口的长连接:', port)
+    console.log('长连接启动:', port.name, port)
     const tabId = port.sender?.tab?.id
     if (!tabId) return
-    LongPort[tabId] = port
-    console.log('LongPort', LongPort[tabId], tabId)
-    port.onMessage.addListener(async function (message) {
-      console.log('收到来自content窗口的消息:', message)
-      switch (message.type) {
-        case 'VIDEO_SEND_EVENT':
-          console.log('收到来自content窗口的视频同步消息:', message)
-          await websocketService.send(message.data)
-          break
-        default:
-          break
-      }
-    })
-    port.onDisconnect.addListener(() => {
-      // 这里做清理，比如从全局数组移除这个port
-      if (messageListeners[tabId]) {
-        websocketService.off(WS_EVENTS.MESSAGE, messageListeners[tabId])
-        delete messageListeners[tabId]
-      }
-      // 清理重定向监听器
-      if (redirectListeners[tabId]) {
-        websocketService.off('redirect', redirectListeners[tabId])
-        delete redirectListeners[tabId]
-      }
-      // 清理URL变更监听器
-      if (urlChangeListeners[tabId]) {
-        websocketService.off('URL_CHANGE', urlChangeListeners[tabId])
-        delete urlChangeListeners[tabId]
-      }
-      // 清理导航监听器
-      if (navigationListeners[tabId]) {
-        browser.webNavigation.onHistoryStateUpdated.removeListener(navigationListeners[tabId])
-        delete navigationListeners[tabId]
-      }
-      delete LongPort[tabId]
-      console.log('Port 已断开，做清理')
-    })
+    if (port.name === 'video-control') {
+      VideoPort[tabId] = port
+      console.log('VideoPort', VideoPort[tabId], tabId)
+      port.onMessage.addListener(async function (message) {
+        console.log('收到来自content窗口的消息:', message)
+        switch (message.type) {
+          case 'VIDEO_SEND_EVENT':
+            console.log('收到来自content窗口的视频同步消息:', message)
+            await websocketService.send(message.data)
+            break
+
+          default:
+            break
+        }
+      })
+      port.onDisconnect.addListener(() => {
+        // 这里做清理，比如从全局数组移除这个port
+        if (messageListeners[tabId]) {
+          websocketService.off(WS_EVENTS.MESSAGE, messageListeners[tabId])
+          delete messageListeners[tabId]
+        }
+        // 清理重定向监听器
+        if (redirectListeners[tabId]) {
+          websocketService.off('redirect', redirectListeners[tabId])
+          delete redirectListeners[tabId]
+        }
+        // 清理URL变更监听器
+        if (urlChangeListeners[tabId]) {
+          websocketService.off('URL_CHANGE', urlChangeListeners[tabId])
+          delete urlChangeListeners[tabId]
+        }
+        // 清理导航监听器
+        if (navigationListeners[tabId]) {
+          browser.webNavigation.onHistoryStateUpdated.removeListener(navigationListeners[tabId])
+          delete navigationListeners[tabId]
+        }
+        delete VideoPort[tabId]
+        console.log('Port 已断开，做清理')
+      })
+    }
+    if (port.name === 'chat-control') {
+      ChatPort[tabId] = port
+      port.onMessage.addListener(async function (message) {
+        switch (message.type) {
+          case 'CHAT':
+            const { senderId, msgType, content } = message.data
+            console.log('收到来自IFRAME的聊天消息:', tabId, message)
+            const roomId = tabsRooms[tabId]
+            await websocketService.send({
+              type: MessageType.CHAT,
+              roomId,
+              senderId,
+              data: {
+                msgType,
+                content,
+              },
+            })
+
+            break
+
+          default:
+            break
+        }
+      })
+      port.onDisconnect.addListener(() => {
+        delete ChatPort[tabId]
+        console.log('ChatPort 已断开，做清理')
+      })
+    }
   })
 
   // browser.webNavigation.onHistoryStateUpdated.addListener(
@@ -579,8 +671,8 @@ export default defineBackground(async () => {
         console.log('房间', roomId, '已被删除')
       }
       websocketService.disconnect()
-      LongPort[tabId].disconnect()
-      delete LongPort[tabId]
+      VideoPort[tabId].disconnect()
+      delete VideoPort[tabId]
     }
   })
 })

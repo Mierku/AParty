@@ -9,7 +9,7 @@
     </div>
 
     <!-- 垂直滚动条 -->
-    <div v-if="showVerticalBar" class="scrollbar-track vertical" @mousedown="startDrag($event, 'vertical')">
+    <div v-if="showVerticalBar" class="scrollbar-track vertical">
       <div
         :class="['scrollbar-thumb', scrollStatus]"
         :style="{
@@ -45,7 +45,6 @@ const thumbHeight = ref(0)
 const thumbTop = ref(0)
 let dragStartY = 0
 let startScrollTop = 0
-let hideTimer: number | null = null
 
 const { width, height } = useElementSize(innerContent)
 
@@ -58,10 +57,14 @@ const showVerticalBar = computed(() => {
 
 // 内容滚动事件处理
 const handleContentScroll = () => {
+  console.log('handleContentScroll')
   if (!content.value || !container.value) return
+  const scrollableHeight = height.value - content.value.clientHeight
+  if (scrollableHeight <= 0) return
   // 计算滑块位置（比例同步）
-  const scrollRatio = content.value.scrollTop / height.value
-  thumbTop.value = scrollRatio * container.value.clientHeight
+  const scrollRatio = content.value.scrollTop / scrollableHeight
+  const maxThumbTop = container.value.clientHeight - thumbHeight.value
+  thumbTop.value = Math.min(scrollRatio * maxThumbTop, maxThumbTop)
 }
 
 // 鼠标按下滑块时的处理
@@ -81,11 +84,15 @@ const startDrag = (e: MouseEvent, type: 'vertical') => {
 // 拖拽过程中的处理
 const handleDrag = (e: MouseEvent) => {
   if (!content.value || !container.value) return
+
   const deltaY = e.clientY - dragStartY
-  const dragRatio = deltaY / container.value.clientHeight
+  const maxThumbTop = container.value.clientHeight - thumbHeight.value
+  const dragRatio = deltaY / maxThumbTop
+  const scrollableHeight = height.value - content.value.clientHeight
 
   // 根据拖拽距离计算内容滚动位置
-  content.value.scrollTop = startScrollTop + dragRatio * height.value
+  const newScrollTop = startScrollTop + dragRatio * scrollableHeight
+  content.value.scrollTop = Math.max(0, Math.min(newScrollTop, scrollableHeight))
 }
 
 // 停止拖拽的处理
@@ -109,18 +116,31 @@ const calculateThumbSize = () => {
   if (!content.value || !container.value) return
 
   // 核心比例公式[1,5](@ref)
-  const visibleRatio = container.value.clientHeight / height.value
+  const visibleRatio = content.value.clientHeight / height.value
   thumbHeight.value = Math.max(30, visibleRatio * container.value.clientHeight)
 }
 
 // 监听内容变化（如动态加载）
 watch(
-  () => content.value?.scrollHeight,
+  () => height.value,
   () => {
     calculateThumbSize()
     handleContentScroll()
   },
 )
+
+// 更新至底部
+const updateToBottom = () => {
+  nextTick(() => {
+    // content.value?.scrollTo({ top: height.value + 4411, behavior: 'smooth' })
+    innerContent.value?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'end', // 元素底部对齐容器底部
+    })
+  })
+}
+// 暴露更新至底部方法
+defineExpose({ updateToBottom })
 
 // 初始化
 onMounted(() => {
