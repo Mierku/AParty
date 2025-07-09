@@ -1,5 +1,5 @@
 // 这个函数用于获取 Auth.js 的会话 Token
-async function getAuthToken() {
+export async function getAuthToken() {
   const url = 'http://localhost:3000' // 或者您的线上域名
 
   // Auth.js v5+ 默认的 Cookie 名称

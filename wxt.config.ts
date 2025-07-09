@@ -4,9 +4,6 @@ import { defineConfig } from 'wxt'
 export default defineConfig({
   modules: ['@wxt-dev/module-vue'],
   srcDir: 'src',
-  server: {
-    port: 3001,
-  },
 
   manifest: () => ({
     name: 'Aparty 视频同步',
@@ -20,5 +17,8 @@ export default defineConfig({
         matches: ['<all_urls>'],
       },
     ],
+    externally_connectable: {
+      matches: ['http://localhost:3000/*'],
+    },
   }),
 })

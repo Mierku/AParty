@@ -2,7 +2,7 @@ import { saveCurrentRoom, getCurrentRoom, getRoomInfo, getUserId, clearRoomInfo 
 import { RoomInfo } from '../utils/constants'
 import websocketService from '@/utils/websocket'
 import { sendToContentScript } from '@/utils/message'
-
+import { getAuthToken } from '@/utils/background/auth'
 // 定义接口
 interface TabsRooms {
   [tabId: number]: string // 标签页ID -> 房间ID
@@ -673,6 +673,14 @@ export default defineBackground(async () => {
       websocketService.disconnect()
       VideoPort[tabId].disconnect()
       delete VideoPort[tabId]
+    }
+  })
+  // 监听自己网页的消息
+  browser.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
+    console.log('收到来自自己网页的消息', request, sender)
+    if (sender.url === 'http://localhost:3000/') {
+      console.log('收到来自自己网页的消息', request, sender)
+      // if (request.openUrlInEditor) openUrl(request.openUrlInEditor)
     }
   })
 })

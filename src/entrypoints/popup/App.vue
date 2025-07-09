@@ -3,8 +3,11 @@ import { ref, onMounted, computed } from 'vue'
 import DisplayMain from './components/display/main.vue'
 import DisplayJoin from './components/display/join.vue'
 import DisplayInRoom from './components/display/inRoom.vue'
-import { ControlMode, MessageType, SUPPORTED_SITES, RoomInfo } from '../../utils/constants'
-import { generateRoomId, getUserId } from '../../utils/storage'
+
+import { getSessionInfo } from '@/api/auth'
+import { generateRoomId, getUserId } from '@/utils/storage'
+import { getAuthToken } from '@/utils/background/auth'
+import { ControlMode, MessageType, SUPPORTED_SITES, RoomInfo } from '@/utils/constants'
 
 // 响应类型定义
 interface RoomInfoResponse {
@@ -198,6 +201,10 @@ const getRoomInfoFromContentScript = async (): Promise<boolean> => {
 // 页面加载时检查状态
 onMounted(async () => {
   try {
+    // 获取登录信息
+    const token = await getAuthToken()
+    const session = await getSessionInfo(token)
+    console.log('session', session)
     // 检查当前网站是否支持创建房间
     await checkCurrentPageSupport()
 
